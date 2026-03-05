@@ -11,8 +11,12 @@ class MenuService
     {
         $imagePath = null;
 
-        if (isset($data['image'])) {
-            $imagePath = $data['image']->store('menus', 'public');
+        // Handle multiple images - gunakan yang pertama sebagai primary
+        if (isset($data['images']) && !empty($data['images'])) {
+            $images = is_array($data['images']) ? $data['images'] : [$data['images']];
+            if (!empty($images)) {
+                $imagePath = $images[0]->store('menus', 'public');
+            }
         }
 
         return Menu::create([
@@ -29,13 +33,21 @@ class MenuService
 
     public function updateMenu(Menu $menu, array $data): Menu
     {
-        if (isset($data['image'])) {
+        // Handle new images - gunakan yang pertama sebagai primary
+        if (isset($data['new_images']) && !empty($data['new_images'])) {
             // Hapus gambar lama
             if ($menu->image_path) {
                 Storage::disk('public')->delete($menu->image_path);
             }
-            $data['image_path'] = $data['image']->store('menus', 'public');
-            unset($data['image']);
+            $newImages = is_array($data['new_images']) ? $data['new_images'] : [$data['new_images']];
+            if (!empty($newImages)) {
+                $data['image_path'] = $newImages[0]->store('menus', 'public');
+            }
+            unset($data['new_images']);
+        }
+
+        if (isset($data['existing_images'])) {
+            unset($data['existing_images']);
         }
 
         $menu->update($data);

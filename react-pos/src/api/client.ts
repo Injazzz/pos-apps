@@ -7,7 +7,6 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 export const apiClient: AxiosInstance = axios.create({
   baseURL: `${BASE_URL}/api`,
   headers: {
-    'Content-Type': 'application/json',
     Accept: 'application/json',
   },
   withCredentials: true,
@@ -21,6 +20,12 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    
+    // Set Content-Type to application/json hanya untuk non-FormData requests
+    if (!(config.data instanceof FormData) && !config.headers['Content-Type']) {
+      config.headers['Content-Type'] = 'application/json'
+    }
+    
     return config
   },
   (error) => Promise.reject(error)

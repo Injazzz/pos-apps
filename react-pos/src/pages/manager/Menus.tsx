@@ -44,16 +44,15 @@ function formatRupiah(v: number) {
   }).format(v)
 }
 
-// Tipe untuk form data
+// Tipe untuk form data - sesuaikan dengan CreateMenuRequest/UpdateMenuRequest
 type FormData = {
   name: string
   category: string
   price: number | string
-  stock: number | string
+  stock: number | string | null
   is_available: boolean
   description: string
-  image_path: string | string[] | null
-  new_images: File[]
+  images: File[]  // untuk upload multiple images
   sort_order: number
 }
 
@@ -63,7 +62,9 @@ export function Component() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
+  const [isImageGalleryOpen, setIsImageGalleryOpen] = useState(false)
   const [selectedMenu, setSelectedMenu] = useState<Menu | null>(null)
+  const [selectedImageMenu, setSelectedImageMenu] = useState<Menu | null>(null)
   const [activeTab, setActiveTab] = useState('basic')
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -74,8 +75,7 @@ export function Component() {
     stock: '',
     is_available: true,
     description: '',
-    image_path: null,
-    new_images: [],
+    images: [],
     sort_order: 0,
   })
 
@@ -89,7 +89,8 @@ export function Component() {
       const { data } = await apiClient.get('/manager/menus', {
         params: { search, per_page: 50 },
       })
-      return data
+      // Response structure: { success: true, data: { data: [...], links, meta }, message: '...' }
+      return data.data
     },
   })
 
@@ -97,7 +98,7 @@ export function Component() {
     mutationFn: async (formData: FormData) => {
       const formDataObj = new FormData()
       
-      // Append basic fields
+      // Append basic fields sesuai dengan CreateMenuRequest
       formDataObj.append('name', formData.name)
       formDataObj.append('category', formData.category)
       formDataObj.append('price', formData.price.toString())
@@ -112,9 +113,9 @@ export function Component() {
         formDataObj.append('description', formData.description)
       }
       
-      // Append multiple images - gunakan 'images[]' untuk multiple files
-      formData.new_images.forEach((image) => {
-        formDataObj.append('images[]', image)  // Ubah dari images[index] ke images[]
+      // Append multiple images
+      formData.images.forEach((image) => {
+        formDataObj.append('images[]', image)
       })
 
       const { data } = await apiClient.post('/manager/menus', formDataObj, {
@@ -124,8 +125,8 @@ export function Component() {
       })
       return data
     },
-    onSuccess: () => {
-      toast.success('Menu berhasil ditambahkan')
+    onSuccess: (response) => {
+      toast.success(response.message || 'Menu berhasil ditambahkan')
       resetForm()
       setIsModalOpen(false)
       queryClient.invalidateQueries({ queryKey: ['manager', 'menus'] })
@@ -140,7 +141,7 @@ export function Component() {
       const formDataObj = new FormData()
       formDataObj.append('_method', 'PUT')
       
-      // Append basic fields
+      // Append basic fields sesuai dengan UpdateMenuRequest
       formDataObj.append('name', formData.name)
       formDataObj.append('category', formData.category)
       formDataObj.append('price', formData.price.toString())
@@ -155,14 +156,14 @@ export function Component() {
         formDataObj.append('description', formData.description)
       }
       
-      // Send existing images order as JSON
+      // Kirim existing images order
       if (existingImages.length > 0) {
         formDataObj.append('existing_images', JSON.stringify(existingImages))
       }
       
       // Append new images
-      formData.new_images.forEach((image) => {
-        formDataObj.append('new_images[]', image)  // Ubah dari new_images[index] ke new_images[]
+      formData.images.forEach((image) => {
+        formDataObj.append('new_images[]', image)
       })
 
       const { data } = await apiClient.post(`/manager/menus/${id}`, formDataObj, {
@@ -172,8 +173,8 @@ export function Component() {
       })
       return data
     },
-    onSuccess: () => {
-      toast.success('Menu berhasil diperbarui')
+    onSuccess: (response) => {
+      toast.success(response.message || 'Menu berhasil diperbarui')
       resetForm()
       setIsModalOpen(false)
       setIsEditMode(false)
@@ -190,14 +191,28 @@ export function Component() {
       const { data } = await apiClient.delete(`/manager/menus/${menuId}`)
       return data
     },
-    onSuccess: () => {
-      toast.success('Menu berhasil dihapus')
+    onSuccess: (response) => {
+      toast.success(response.message || 'Menu berhasil dihapus')
       setIsDeleteModalOpen(false)
       setSelectedMenu(null)
       queryClient.invalidateQueries({ queryKey: ['manager', 'menus'] })
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message ?? 'Gagal menghapus menu')
+    },
+  })
+
+  const toggleAvailabilityMutation = useMutation({
+    mutationFn: async (menuId: number) => {
+      const { data } = await apiClient.patch(`/manager/menus/${menuId}/toggle-availability`)
+      return data
+    },
+    onSuccess: (response) => {
+      toast.success(response.message || 'Status menu berhasil diubah')
+      queryClient.invalidateQueries({ queryKey: ['manager', 'menus'] })
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message ?? 'Gagal mengubah status menu')
     },
   })
 
@@ -219,13 +234,12 @@ export function Component() {
     setSelectedMenu(menu)
     setIsEditMode(true)
     
-    // Parse existing images - gunakan image_path bukan image_url
+    // Parse existing images dari MenuResource
     let existingImagesArray: string[] = []
     if (menu.image_path) {
       if (Array.isArray(menu.image_path)) {
         existingImagesArray = menu.image_path
       } else if (typeof menu.image_path === 'string') {
-        // Check if it's a JSON string
         try {
           const parsed = JSON.parse(menu.image_path)
           existingImagesArray = Array.isArray(parsed) ? parsed : [menu.image_path]
@@ -245,8 +259,7 @@ export function Component() {
       stock: menu.stock ?? '',
       is_available: menu.is_available,
       description: menu.description || '',
-      image_path: existingImagesArray,
-      new_images: [],
+      images: [],
       sort_order: menu.sort_order || 0,
     })
 
@@ -267,8 +280,7 @@ export function Component() {
       stock: '',
       is_available: true,
       description: '',
-      image_path: null,
-      new_images: [],
+      images: [],
       sort_order: 0,
     })
     setImagePreviews([])
@@ -309,7 +321,7 @@ export function Component() {
     }
 
     // Max 5 images total
-    const totalImages = (isEditMode ? existingImages.length : 0) + formData.new_images.length + files.length
+    const totalImages = (isEditMode ? existingImages.length : 0) + formData.images.length + files.length
     if (totalImages > 5) {
       toast.error('Maksimal 5 gambar per menu')
       return
@@ -317,7 +329,7 @@ export function Component() {
 
     setFormData(prev => ({
       ...prev,
-      new_images: [...prev.new_images, ...files],
+      images: [...prev.images, ...files],
     }))
 
     // Create previews
@@ -333,19 +345,14 @@ export function Component() {
       const updatedExisting = [...existingImages]
       updatedExisting.splice(index, 1)
       setExistingImages(updatedExisting)
-      
-      setFormData(prev => ({
-        ...prev,
-        image_path: updatedExisting,
-      }))
     } else {
       // Remove new image
       const newImageIndex = index - existingImages.length
-      const updatedNewImages = [...formData.new_images]
-      updatedNewImages.splice(newImageIndex, 1)
+      const updatedImages = [...formData.images]
+      updatedImages.splice(newImageIndex, 1)
       setFormData(prev => ({
         ...prev,
-        new_images: updatedNewImages,
+        images: updatedImages,
       }))
     }
     
@@ -385,19 +392,15 @@ export function Component() {
         updatedExisting[index] = updatedExisting[newIndex]
         updatedExisting[newIndex] = tempExisting
         setExistingImages(updatedExisting)
-        setFormData(prev => ({
-          ...prev,
-          image_path: updatedExisting,
-        }))
       } else if (!isIndexExisting && !isNewIndexExisting) {
         // Both are new images
-        const updatedNew = [...formData.new_images]
-        const tempNew = updatedNew[index - existingImages.length]
-        updatedNew[index - existingImages.length] = updatedNew[newIndex - existingImages.length]
-        updatedNew[newIndex - existingImages.length] = tempNew
+        const updatedImages = [...formData.images]
+        const tempImage = updatedImages[index - existingImages.length]
+        updatedImages[index - existingImages.length] = updatedImages[newIndex - existingImages.length]
+        updatedImages[newIndex - existingImages.length] = tempImage
         setFormData(prev => ({
           ...prev,
-          new_images: updatedNew,
+          images: updatedImages,
         }))
       }
     }
@@ -443,15 +446,21 @@ export function Component() {
   const handleSubmit = () => {
     if (!validateForm()) return
 
+    // Convert empty stock to null (unlimited)
+    const submitData = {
+      ...formData,
+      stock: formData.stock === '' ? null : Number(formData.stock),
+      price: Number(formData.price),
+    }
+
     if (isEditMode && selectedMenu) {
-      updateMenuMutation.mutate({ id: selectedMenu.id, formData })
+      updateMenuMutation.mutate({ id: selectedMenu.id, formData: submitData })
     } else {
-      createMenuMutation.mutate(formData)
+      createMenuMutation.mutate(submitData)
     }
   }
 
-  const apiData = data?.data
-  const menus = Array.isArray(apiData?.data) ? apiData.data : []
+  const menus = data?.data ?? [] // MenuResource collection
 
   return (
     <div className="space-y-6">
@@ -527,33 +536,23 @@ export function Component() {
                   </TableRow>
                 ) : (
                   menus.map((menu: Menu) => {
-                    // Parse images for display - gunakan image_path
-                    let displayImage: string | null = null
-                    if (menu.image_path) {
-                      if (Array.isArray(menu.image_path) && menu.image_path.length > 0) {
-                        displayImage = menu.image_path[0]
-                      } else if (typeof menu.image_path === 'string') {
-                        try {
-                          const parsed = JSON.parse(menu.image_path)
-                          displayImage = Array.isArray(parsed) ? parsed[0] : menu.image_path
-                        } catch {
-                          displayImage = menu.image_path
-                        }
-                      }
-                    }
-                    
                     return (
                       <TableRow key={menu.id}>
-                        <TableCell>
+                        <TableCell 
+                          className="cursor-pointer hover:opacity-75"
+                          onClick={() => {
+                            setSelectedImageMenu(menu)
+                            setIsImageGalleryOpen(true)
+                          }}
+                        >
                           <div className="h-10 w-10 rounded overflow-hidden bg-muted">
-                            {displayImage ? (
+                            {menu.image_url ? (
                               <img 
-                                src={`/storage/${displayImage}`} // Tambahkan /storage/ prefix
+                                src={menu.image_url}
                                 alt={menu.name}
                                 className="h-full w-full object-cover"
                                 onError={(e) => {
-                                  // Fallback jika gambar gagal load
-                                  e.currentTarget.src = '/placeholder-image.png'
+                                  e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Crect fill="%23eee" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" font-size="12" fill="%23999"%3ENo Image%3C/text%3E%3C/svg%3E'
                                 }}
                               />
                             ) : (
@@ -568,7 +567,11 @@ export function Component() {
                         <TableCell>{formatRupiah(menu.price)}</TableCell>
                         <TableCell>{menu.stock ?? '∞'}</TableCell>
                         <TableCell>
-                          <Badge variant={menu.is_available ? 'default' : 'secondary'}>
+                          <Badge 
+                            variant={menu.is_available ? 'default' : 'secondary'}
+                            className="cursor-pointer hover:opacity-80"
+                            onClick={() => toggleAvailabilityMutation.mutate(menu.id)}
+                          >
                             {menu.is_available ? 'Tersedia' : 'Tidak Tersedia'}
                           </Badge>
                         </TableCell>
@@ -584,6 +587,12 @@ export function Component() {
                               <DropdownMenuItem onClick={() => handleEditClick(menu)}>
                                 <Edit2 className="h-4 w-4 mr-2" />
                                 Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => toggleAvailabilityMutation.mutate(menu.id)}
+                              >
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                                {menu.is_available ? 'Nonaktifkan' : 'Aktifkan'}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => handleDeleteClick(menu)}
@@ -680,7 +689,7 @@ export function Component() {
                     type="number"
                     min="0"
                     placeholder="Kosongkan jika tidak terbatas"
-                    value={formData.stock}
+                    value={formData.stock ?? ''}
                     onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                   />
                   <p className="text-xs text-muted-foreground">
@@ -896,6 +905,62 @@ export function Component() {
               disabled={deleteMenuMutation.isPending}
             >
               {deleteMenuMutation.isPending ? 'Menghapus...' : 'Ya, Hapus'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Galeri Gambar Menu */}
+      <Dialog open={isImageGalleryOpen} onOpenChange={setIsImageGalleryOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Galeri Gambar: {selectedImageMenu?.name}</DialogTitle>
+          </DialogHeader>
+
+          {selectedImageMenu ? (
+            <div className="space-y-4">
+              {selectedImageMenu.image_url ? (
+                <div className="flex flex-col gap-4">
+                  {/* Display primary/main image */}
+                  <div className="flex justify-center">
+                    <img
+                      src={selectedImageMenu.image_url}
+                      alt={selectedImageMenu.name}
+                      className="max-h-96 rounded-lg object-contain"
+                      onError={(e) => {
+                        e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Crect fill="%23f0f0f0" width="400" height="300"/%3E%3Ctext x="200" y="150" text-anchor="middle" dy=".3em" font-size="18" fill="%23999"%3EGambar tidak dapat dimuat%3C/text%3E%3C/svg%3E'
+                      }}
+                    />
+                  </div>
+                  
+                  {/* Image info */}
+                  <div className="border-t pt-4">
+                    <p className="text-sm text-muted-foreground">
+                      <strong>Menu:</strong> {selectedImageMenu.name}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      <strong>Kategori:</strong> {selectedImageMenu.category}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      <strong>Harga:</strong> {formatRupiah(selectedImageMenu.price)}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <ImageIcon className="h-16 w-16 text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">Tidak ada gambar untuk menu ini</p>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsImageGalleryOpen(false)}
+            >
+              Tutup
             </Button>
           </DialogFooter>
         </DialogContent>
