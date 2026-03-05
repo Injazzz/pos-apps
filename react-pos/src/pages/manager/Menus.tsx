@@ -112,9 +112,9 @@ export function Component() {
         formDataObj.append('description', formData.description)
       }
       
-      // Append multiple images
-      formData.new_images.forEach((image, index) => {
-        formDataObj.append(`images[${index}]`, image)
+      // Append multiple images - gunakan 'images[]' untuk multiple files
+      formData.new_images.forEach((image) => {
+        formDataObj.append('images[]', image)  // Ubah dari images[index] ke images[]
       })
 
       const { data } = await apiClient.post('/manager/menus', formDataObj, {
@@ -155,16 +155,14 @@ export function Component() {
         formDataObj.append('description', formData.description)
       }
       
-      // Append existing images as JSON if they're an array
-      if (Array.isArray(formData.image_path) && formData.image_path.length > 0) {
-        formDataObj.append('existing_images', JSON.stringify(formData.image_path))
-      } else if (typeof formData.image_path === 'string' && formData.image_path) {
-        formDataObj.append('existing_images', JSON.stringify([formData.image_path]))
+      // Send existing images order as JSON
+      if (existingImages.length > 0) {
+        formDataObj.append('existing_images', JSON.stringify(existingImages))
       }
       
       // Append new images
-      formData.new_images.forEach((image, index) => {
-        formDataObj.append(`new_images[${index}]`, image)
+      formData.new_images.forEach((image) => {
+        formDataObj.append('new_images[]', image)  // Ubah dari new_images[index] ke new_images[]
       })
 
       const { data } = await apiClient.post(`/manager/menus/${id}`, formDataObj, {
@@ -221,18 +219,18 @@ export function Component() {
     setSelectedMenu(menu)
     setIsEditMode(true)
     
-    // Parse existing images
+    // Parse existing images - gunakan image_path bukan image_url
     let existingImagesArray: string[] = []
-    if (menu.image_url) {
-      if (Array.isArray(menu.image_url)) {
-        existingImagesArray = menu.image_url
-      } else if (typeof menu.image_url === 'string') {
+    if (menu.image_path) {
+      if (Array.isArray(menu.image_path)) {
+        existingImagesArray = menu.image_path
+      } else if (typeof menu.image_path === 'string') {
         // Check if it's a JSON string
         try {
-          const parsed = JSON.parse(menu.image_url)
-          existingImagesArray = Array.isArray(parsed) ? parsed : [menu.image_url]
+          const parsed = JSON.parse(menu.image_path)
+          existingImagesArray = Array.isArray(parsed) ? parsed : [menu.image_path]
         } catch {
-          existingImagesArray = [menu.image_url]
+          existingImagesArray = [menu.image_path]
         }
       }
     }
@@ -529,17 +527,17 @@ export function Component() {
                   </TableRow>
                 ) : (
                   menus.map((menu: Menu) => {
-                    // Parse images for display
+                    // Parse images for display - gunakan image_path
                     let displayImage: string | null = null
-                    if (menu.image_url) {
-                      if (Array.isArray(menu.image_url) && menu.image_url.length > 0) {
-                        displayImage = menu.image_url[0]
-                      } else if (typeof menu.image_url === 'string') {
+                    if (menu.image_path) {
+                      if (Array.isArray(menu.image_path) && menu.image_path.length > 0) {
+                        displayImage = menu.image_path[0]
+                      } else if (typeof menu.image_path === 'string') {
                         try {
-                          const parsed = JSON.parse(menu.image_url)
-                          displayImage = Array.isArray(parsed) ? parsed[0] : menu.image_url
+                          const parsed = JSON.parse(menu.image_path)
+                          displayImage = Array.isArray(parsed) ? parsed[0] : menu.image_path
                         } catch {
-                          displayImage = menu.image_url
+                          displayImage = menu.image_path
                         }
                       }
                     }
@@ -550,9 +548,13 @@ export function Component() {
                           <div className="h-10 w-10 rounded overflow-hidden bg-muted">
                             {displayImage ? (
                               <img 
-                                src={displayImage} 
+                                src={`/storage/${displayImage}`} // Tambahkan /storage/ prefix
                                 alt={menu.name}
                                 className="h-full w-full object-cover"
+                                onError={(e) => {
+                                  // Fallback jika gambar gagal load
+                                  e.currentTarget.src = '/placeholder-image.png'
+                                }}
                               />
                             ) : (
                               <div className="h-full w-full flex items-center justify-center">
